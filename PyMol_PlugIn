@@ -1,0 +1,883 @@
+#**SCRIPT WILL ONLY WORK WHEN RUN IN PYMOL API/GUI** --> cmd function is not recognized in python. To run script open PyMol session change directory to where script is housed.
+#type: run pymol.py in command bar. Then import structures and use functions as needed.
+import statistics
+
+def Functions_Available(command):
+    '''None --> Print(String)
+
+        Message is displayed at the onset of code start and every subsequent function call. It allows the user to see what functions are available to them.
+        Need to update with other functions as they are added.
+    '''
+    if command == 'START':
+        print('Script successfully loaded.' + '\n' + 'Functions Available: ' + '\n' + '1. Structure_Import(command="")' + '\n' + '2. Custom_Import(name, chain, structure)' + '\n' +
+              '3. Make_Pretty(command="Structure Name")' + '\n' + '4. Align(command="Structure Name")' + '\n' + '5. Align_All()' + '\n' +
+              '6. Data_Extraction(command="CA"/"Backbone"/"All")'+ '\n' + '7. Condense_Structure(command="Domain")' + '\n' +
+              '8. Graph(command="SrcFes"/"Condensed"/"PaperSrc"/"PaperFes"/"")' + '\n' + '9. DataExport("TAB"/"EXCEL")')
+    else:
+        print('\n' + 'Functions Available: ' + '\n' + '1. Structure_Import(command="")' + '\n' + '2. Custom_Import(name, chain, structure)' + '\n' +
+              '3. Make_Pretty(command="Structure Name")' + '\n' + '4. Align(command="Structure Name")' + '\n' + '5. Align_All()' + '\n' +
+              '6. Data_Extraction(command="CA"/"Backbone"/"All")'+ '\n' + '7. Condense_Structure(command="Domain")' + '\n' +
+              '8. Graph(command="SrcFes"/"Condensed"/"PaperSrc"/"PaperFes"/"")' + '\n' + '9. DataExport("TAB"/"EXCEL")')
+
+    return None
+
+def Structure_Import(command):
+    '''textfile import (readfile:readlines) --> StructureLib['Structure_Name' + 'Unique_Import_Feature'] = Data
+
+    Input file is from text delineated excel file --> wordfile. Import is done through readlines and every lines corresponds to a structure with a:
+    1. Name (what structure is to be called)
+    2. PDB_ID (ID to be called from Protein Data Bank)
+    3. Ligand (If the structure is bounnd to something (yes/no/other)
+    4. Chain (If necessary can distinguish which chain of the molecule you want to keep (i.e. A,B,C etc.)
+    5. Structure (The residues corresponding to the structure that you want to analyze. Sometimes there are tags or linker residue that confound alignments or calculations)
+    6. BC Loop is a special feature of the SH2 domain that was added when script was written initially. Can ignore or leave blank for other applications.
+
+    Each element that is input is stored in StructureLib['Data'] and StructureLib['Headlines'] lists as unique identifiers. The actual information is stored in the StructureLib with the structure
+    name and unique identifier. Function then imports each structure from Protein Data Bank and visualizes accoring to structure limits that were input from data.
+    '''
+    #File Opening and Library Creation
+    global StructureLib
+    readfile = open('Data Input Sheet.txt', 'r')
+    Structures = readfile.readlines()
+    StructureLib = {}
+    StructureLib['StructureNames'], StructureLib['Headlines'], StructureLib['Data'] = [], ['Name', 'PDBID', 'Ligand', 'Chain', 'Structure', 'BC Loop'], ['_PDBID', '_Ligand', '_Chain', '_Structure', '_BCLoop']
+    for i in range(1,(len(Structures))):
+        temp = Structures[i].strip().strip('').strip(' ').strip('\t').split('\t')
+        if temp[0] == '':
+            break
+        StructureLib['StructureNames'].append(str(temp[0]))
+        StructureLib[str(temp[0]) + '_PDBID'] = str(temp[1])
+        StructureLib[str(temp[0]) + '_Ligand'] = str(temp[2])
+        if temp[3] ==  '':
+            StructureLib[str(temp[0]) + '_Chain'] = None
+        else:
+            StructureLib[str(temp[0]) + '_Chain'] = 'c. ' + str(temp[3])
+        if temp[4] == '':
+            StructureLib[str(temp[0]) + '_Structure'] = None
+        else:
+            StructureLib[str(temp[0]) + '_Structure'] = '& i. ' + str(temp[4])
+        StructureLib[str(temp[0]) + '_BCLoop'] = str(temp[5])        
+        cmd.fetch(temp[1])
+        cmd.create(temp[0], '%s & %s'%(temp[1], StructureLib[str(temp[0]) + '_Chain'] + StructureLib[str(temp[0]) + '_Structure']))
+        cmd.delete(temp[1])
+        cmd.show_as('cartoon', temp[0])
+
+        #Trying to renumber and restructure data --> will require rebuild
+        #cmd.alter(temp[0], "segi='A'")
+        #cmd.alter(temp[0], "chain = 'A'")
+        #change = '"' + "resi = 'resi - " + str(int(temp[4].split('-')[0]) - 1) + "'" + '"'
+        #cmd.alter(temp[0], '"' + "resi = 'resi - " + str(int(temp[4].split('-')[0]) - 1) + "'" + '"')
+        #cmd.sort()
+            
+    cmd.bg_color('white')
+
+    return  print('Number of Structures Imported: ', len(StructureLib['StructureNames'])), Functions_Available('')
+
+def Custom_Import(name, chain, structure):
+    '''
+    '''
+    StructureLib['StructureNames'].append(str(name) + '_N')
+    StructureLib[str(name) + '_N' + '_PDBID'] = str(name)
+    StructureLib[str(name) + '_N' + '_Ligand'] = 'N/A'
+    StructureLib[str(name) + '_N' + '_Chain'] = 'c. ' + str(chain)
+    StructureLib[str(name) + '_N' + '_Structure'] = '& i. ' + str(structure)
+    StructureLib[str(name) + '_N' + '_BCLoop'] = 'N/A' 
+    cmd.create(str(name) + '_N', '%s & %s'%(str(name), StructureLib[str(name) + '_N' + '_Chain'] + StructureLib[str(name) + '_N' + '_Structure']))
+    cmd.delete(name)
+    cmd.show_as('cartoon', name)
+    
+def Make_Pretty(Reference):
+    '''Structure Name --> Refined Structure in PyMol GUI
+
+        Takes a domain from user input and visualizes according to commands below.
+        Can add a frame or reference so that domain is always positioned in the same way.
+    '''
+    Reference = str(Reference)
+    cmd.color('grey40', Reference)
+    refsurface = Reference + '_surface'
+    cmd.copy(refsurface, Reference)
+    cmd.color('grey70', Reference)
+    cmd.hide('cartoon', Reference)
+    #cmd.show('surface', Reference)
+    #cmd.set('transparency', 0.6)
+    #cmd.set('surface_quality', 0) #Highest surface quality is 3 but takes a lot of time to render
+    #cmd.set('surface_mode', 1) #Surface representations for all atoms, 0 is deafault for HETATM's
+    #cmd.set('transparency_mode',1) #Multi-layer transparency, 0 is default for Unilayer
+    #cmd.ray()
+
+    cmd.orient(Reference)
+    cmd.center(Reference)
+    cmd.origin(Reference)
+    
+    return print(Reference, ' was made pretty :)'), Functions_Available('')
+
+def Align(reference,fxn):
+    '''Name --> All structures aligned to reference in PyMol API
+
+        This function takes in a reference structure after Structure_Import() and aligns all other imported structures to it. Alignment is done by:
+        1. Testing three alignment functions (ALIGN, CEALIGN, SUPER) and saves the RMSD to Test (dictionary).
+        2. Decision then sorts by lowest RMSD.
+        3. Alignment is run once more based on lowest RMSD and saves the RMSD value and alignment type to StructureLib.
+
+        Final Output is: StructureLib[StructureName + _AlignmentFunction_RMSD] = list[type, RMSD]. Appropriate headers are added to Data and headliner lists.
+    '''
+    #Array to be returned to AlignAll function - will not be needed for regular use
+    AlignAllArray = []
+    
+    refalign = str(StructureLib[reference + '_Chain'] + StructureLib[reference + '_Structure'] + ' & n. CA') 
+    for structure in StructureLib['StructureNames']:
+        if structure != reference:
+            strucalign = str(StructureLib[structure + '_Chain'] + StructureLib[structure + '_Structure'] + ' & n. CA')
+            def ALIGN():
+                '''structure(X,Y,Z),reference(X,Y,Z) --> Alignment List
+
+                   Function takes two structures and applies the align function from PyMOL API:
+                   "align performs a sequence alignment followed by a structural superposition, and then carries out zero or more cycles of refinement
+                   in order to reject structural outliers found during the fit. align does a good job on proteins with decent sequence similarity (identity >30%).
+                   For comparing proteins with lower sequence identity, the super and cealign commands perform better. "
+
+                   *Full Function (default parameters):
+                   cmd.align(string mobile(structure), string target(reference), cutoff=2.0, cycles=5, gap=-10.0,
+                             extend=-0.5,max_gap=50, string object=None,string matrix='BLOSUM62', mobile_state=0,
+                             target_state=0, quiet=1, max_skip=0, transform=1, reset=0)
+
+                    OUTPUT: list --> [RMSD after refinement, #atoms aligned after refinement, #refinement cycles,
+                                      RMSD before refinement, #atoms aligned after refinement, Raw alignment score, #residues aligned]
+
+                    NOTE: Aligning X-Ray to NMR considers all NMR states. Set mobile_state/target_state argument to fix these cases.
+                '''
+                rms_align = cmd.align('%s & %s'%(structure,strucalign),'%s & %s'%(reference,refalign), cutoff=2.0, cycles=8)
+                return rms_align[0]
+            
+            def CEALIGN():
+                '''structure(X,Y,Z),reference(X,Y,Z) --> Alignment Library
+
+                   Function takes two structures and applies the CEALIGN function from PyMOL API:
+                   "cealign aligns two proteins using the CE algorithm. It is very robust for proteins with little to no sequence similarity (twilight zone).
+                   For proteins with decent structural similarity, the super command is preferred and with decent sequence similarity,
+                   the align command is preferred, because these commands are much faster than cealign."
+
+                   *Full Function (default parameters):
+                   cmd.cealign(string target(reference), string mobile(structure), target_state=1, mobile_state=1,
+                               quiet=0, guide=1, d0,d1,window,gap_max:CE Algorithm Parameters, transform=1,string object=None)
+
+                   OUTPUT: Library --> {'alignment_length':int, 'RMSD':int, 'rotation_matrix':[int1, int2, ..., intx]}
+
+                   NOTE: Aligning X-Ray to NMR considers all NMR states. Set mobile_state/target_state argument to fix these cases.
+                '''   
+                rms_cealign = cmd.cealign('%s & %s'%(reference,refalign),'%s & %s'%(structure, strucalign))
+                return rms_cealign['RMSD']
+            
+            def SUPER():
+                '''structure(X,Y,Z),reference(X,Y,Z) --> Alignment List
+
+                   Function takes two structures and applies the super function from PyMOL API:
+                   "super aligns two selections. It does a sequence-independent (unlike align) structure-based dynamic programming alignment followed by a
+                   series of refinement cycles intended to improve the fit by eliminating pairing with high relative variability (just like align).
+                   super is more robust than align for proteins with low sequence similarity."
+
+                   *Full Function (default parameters):
+                   cmd.super(string mobile(structure), string target(reference), cutoff=cutoff, cycles=cycles, string object=None)
+
+                   OUTPUT: list --> [RMSD after refinement, #atoms aligned after refinement, #refinement cycles,
+                                      RMSD before refinement, #atoms aligned after refinement, Raw alignment score, #residues aligned]
+
+                   NOTE: Aligning X-Ray to NMR considers all NMR states. Set mobile_state/target_state argument to fix these cases.
+                '''
+                rms_super = cmd.super('%s & %s'%(structure, strucalign), '%s & %s'%(reference,refalign), cutoff=2.0, cycles=8)
+                return rms_super[0]
+               
+            def rms_cur():
+                '''***Not currently working -->***
+
+                   ***Executive-Warning: Mobile selection spans more than one object.***
+                      wil only load 0.0 into rms_cur_array for every value and has vector length 2x what it should be.
+
+                      rms_cur computes the RMS difference between two atom selections without performing any fitting.
+                      By default, only matching atoms in both selections will be used for the fit (same chain, residue number, atoms names etc.). Alternate location mess up the match!
+
+                      cmd.rms_cur(string mobile, string target)
+
+                      OUTPUT: number.
+
+                      Note: need to align two corresponding atom selections, can align structures to another object and perform rms_cur on the alignment, need to set
+                      matchmaker=-1 in this case.
+                '''
+                #cmd.create("align", None)
+                cmd.create('ref_alt', reference)
+                cmd.create('struc_alt', structure)
+                cmd.super('%s & %s'%('struc_alt', 'name ca'), '%s & %s'%('ref_alt','name ca'), cycles=0, transform=0, object="align")
+                model = cmd.get_model("align")
+
+                rms_cur_array = []
+                for r in model.atom:
+                    rms_cur_array.append(cmd.rms_cur('struc_alt and resi ' + r.resi + 'and name ca',
+                                                     'ref_alt and resi ' + r.resi + 'and name ca', matchmaker=-1))
+                cmd.delete('ref_alt')
+                cmd.delete('struc_alt')
+                cmd.delete("align")
+                
+                return rms_cur_array
+
+            #Align using all available functions. Sort by lowest RMSD. Append RMSD value and function used.
+            TEST = {'ALIGN': ALIGN(), 'CEALIGN': CEALIGN(), 'SUPER': SUPER()}
+            Decision = sorted(TEST, key=TEST.get, reverse=False)
+            AlignAllArray.append(str(round(TEST[Decision[0]],4)))
+            StructureLib[structure + '_Alignment_Function'] = Decision[0]
+            StructureLib[structure + '_AlignFunction_RMSD'] = TEST[Decision[0]]
+            #StructureLib[structure + '_rms_cur'] = rms_cur()
+            
+
+        else:
+            AlignAllArray.append('-')
+            StructureLib[reference + '_Alignment_Function'] = 'Reference'
+            StructureLib[reference + '_AlignFunction_RMSD'] = '0'
+
+    if fxn == 'AlignAll':
+        return AlignAllArray
+    
+
+    cmd.orient(reference)
+    cmd.center(reference)
+    cmd.origin(reference)
+    cmd.extend("ALIGN", ALIGN)
+    cmd.extend("CEALIGN", CEALIGN)
+    cmd.extend("SUPER", SUPER)
+    #cmd.extend("cms_cur", cms_cur)
+    StructureLib['Headlines'], StructureLib['Data'] = StructureLib['Headlines'] + ['Alignment Function', 'RMSD'], StructureLib['Data'] + ['_Alignment_Function', '_AlignFunction_RMSD']
+
+    return print(str(len(StructureLib['StructureNames'])-1) + ' structures were aligned to ' + str(reference)),Functions_Available('')
+
+def Align_All():
+    '''Empty --> list of list[int]
+
+       Function is an empty call to align every structure to one another. This function passes every structure loaded into StructureLib['StructureNames'] into
+       the Align() function. However it saves the alignment into the AlignAllArray which is passed back to this function. These are compiled into the newly created
+       StructureLib['AlignAll'] component of the Structureib. Argument then uses the Graphing function to make and visualize a table of the RMSD values that can be saved.
+       Table is also printed into the DataExport function.
+
+       Input: Align('')
+       Output: 1. StructureLib['AlignAll'] = [[RMSD 1.1, RMSD 1.2, RMSD 1.3],[RMSD 2.1, RMSD 2.2, RMSD 2.3], ... [RMSD X,N ...]]
+               2. Table plotted using matplotlib in the Graph('') function
+               3. Data output into DataExport() function as well
+    '''
+    StructureLib['AlignAll'] = []
+    for structure in StructureLib['StructureNames']:
+        StructureLib['AlignAll'].append(Align(structure, 'AlignAll'))
+
+def Data_Extraction(command):
+    '''Dictionary['Structure_Name' + 'Piece of data extracted'] = datapoint(resi_number, index, name) or list(b, scaled_b, normalized_b, formal_charge, partial_charge, x,y,z)
+
+        Function takes in library of structures and extracts the relevant information from each structure. These data are:
+        1. Residue Number (number)
+        2. Atom index (number; multiple per residue number)
+        3. Name of residue (string)
+        4. b-factor (flexibility; number)
+        5. Scaled b-factor(flexibility; number --> x/structure average)
+        6. Normalized b-factor (flexibility; number -->(x-average)/STD --> structure mean = 0; structure STD = 1)
+        5. Formal charge of atom (number)
+        6. Parital Charge of atom (number)
+        7. X position of atom (number)
+        8. Y position of atom (number)
+        9. Z position of atom (number)
+
+        Command allows for 'CA' (alpha carbons), 'backbone' (backbone nitrogens, carbons, and oxygen), 'all'. Which
+        dictates which atoms information in the structure you are extracting the data. End of function adds the relevant call signs to the 'Data' and 'headlines'
+        which allows them to be called later in "DataExport" function.
+    '''
+    #command Triage: Is the user input in the correct set of inputs to extract data from?
+    TypeLib = {'ca': ['CA'], 'CA': ['CA'], 'c-alpha': ['CA'], 'C-alpha': ['CA'], 'c-Alpha': ['CA'], 'C-ALPHA': ['CA'],
+               'backbone': ['N','C','CA'], 'Backbone': ['N','C','CA'], 'N+C+CA': ['N','C','CA'], 'n+c+ca': ['N','C','CA'],
+               'All': ['N','CA','C','O','CB','CG','CD','NE','CZ','NH1','NH2','OD1','ND2','OD2','SG','OE1','NE2','ND1','CE1','CD2','OD',
+                       'CG1','CD1','CG2','CD2','CE','NZ','SD','CE2','OG','OG1','NE1','CE2','CZ2','CH2','CZ3','CE3''CE1','OH','CG1']}
+    if str(command) in TypeLib:
+        atomtype = TypeLib[str(command)]
+    else:
+        return print('Data_Extraction Input not valid', '\n'), Functions_Available('')
+        exit
+
+    def Normalize(array):
+        ''' list --> list
+
+            Takes in a list of numbers and normalizes to a mean of 0 and a standard deviation of 1.
+
+            i.e. INPUT: array = [1,2,3,4,5], mean = 3, stdev = 1.5811388...
+            
+                 OUTPUT: NormalizedData = [-1.2649110640673518, -0.6324555320336759, 0.0, 0.6324555320336759, 1.2649110640673518], mean = 0.0, stdev = 1.0
+        '''
+        array = [float(array[x]) for x in range(len(array))]
+        mean = statistics.mean(array)
+        STD = statistics.stdev(array)
+        NormalizedData = [(array[y] - mean)/STD for y in range(len(array))]
+
+        return NormalizedData
+
+    for structure in StructureLib['StructureNames']:
+        s = cmd.get_model(structure)
+        StructureLib[structure + '_resi_number'] = [s.atom[k].resi_number for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_index'] = [s.atom[k].index for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_name'] = [s.atom[k].name for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_b'] = [s.atom[k].b for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_scaled_b'] = [x/(sum(StructureLib[structure + '_b'])/len(StructureLib[structure + '_b'])) for x in StructureLib[structure + '_b'] if sum(StructureLib[structure + '_b']) > 0]
+        if sum(StructureLib[structure + '_b']) > 0:
+            StructureLib[structure + '_normalized_b'] = Normalize(StructureLib[structure + '_b'])
+        else:
+            StructureLib[structure + '_normalized_b'] = 'None'
+        StructureLib[structure + '_q'] = [s.atom[k].q for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_formal_charge'] = [s.atom[k].formal_charge for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_partial_charge'] = [s.atom[k].partial_charge for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_X'] = [s.atom[k].coord[0] for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_Y'] = [s.atom[k].coord[1] for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+        StructureLib[structure + '_Z'] = [s.atom[k].coord[2] for k in range(len(s.atom)) if s.atom[k].name in atomtype]
+    #Reset residue numbers to 1 --> Need to consolidate
+        StructureLib[structure + '_resi_number'] = [StructureLib[structure + '_resi_number'][x] + (1 - StructureLib[structure + '_resi_number'][0]) for x in range(len(StructureLib[structure + '_resi_number']))]
+    
+    StructureLib['Headlines'] = StructureLib['Headlines'] + ['Residue Number', 'Index', 'Atom Name', 'B Factor', 'Scaled B Factor', 'Normalized B Factor', 'Occupancy Value', 'Formal Charge', 'Partial Charge', 'X', 'Y', 'Z'] 
+    StructureLib['Data'] = StructureLib['Data'] + ['_resi_number', '_index', '_name', '_b', '_scaled_b', '_normalized_b', '_q', '_formal_charge', '_partial_charge', '_X', '_Y', '_Z']
+
+    cmd.extend("Normalize", Normalize)
+    
+    return print('Data Extraction Successful'), Functions_Available('')
+
+def Condense_Structure(domain):
+    ''''Domain --> Averaged/Normalized Structural Data
+
+        User needs to specify a string that is common to the domains previously loaded that they wish to condense.
+        Function then averages each structural feature from each domain (see below). Output is then written for each.
+        User can graph different features of the condensed domain.
+
+        Domains loaded: wtSrc_1, wtSrc_2, wtSrc_3, wtFes_1, wtFes_2
+        Input: "wtSrc"
+        Domains to be condensed: wtSrc_1, wtSrc_2, wtSrc_3
+
+        Features to be Averaged:
+        1. Residue Number
+        2. Index
+        3. Name (atom name)
+        4. b-factor
+        5. Scaled b-factor
+        6. Normalized b-factor
+        7. Occupany
+        8. Formal Charge
+        9. Partial Charge
+        10. X co-ordinates
+        11. Y co-ordinates
+        12. Z co-ordinates
+
+        Output: "wtSrc_condensed" is now a new domain with averaged features in the output.
+
+        *Note: function takes into account missing residues in the domains and indexes the positions. The "Check()" function accounts for 0 values in new condensed domain.
+    '''
+
+    def check(array,fxn):
+        '''list[int], string --> int
+
+           Input is a list of int from the domains to be condensed at each corresponding residue position.
+           Average the values out and store as new "condensed" domain to be analyzed.
+
+           array, fxn = [1,2,3,4,5], 'av'
+           return 3
+
+           OR
+
+           array, fn = [1,2,3,4,5], 'STD'
+           return 1.5811
+
+           If array contains one value or is empty it will return specified values.
+        '''
+        if len(array) > 1:
+            if fxn == 'av':
+               return sum(array)/len(array)
+            elif fxn == 'STD':
+                return statistics.stdev(array)/len(array)
+            
+        elif len(array) == 1:
+            if fxn == 'av':
+                return sum(array)
+            elif fxn == 'STD':
+                return 0
+            
+        else:
+            if fxn == 'av':
+                return 3.8
+            elif fxn == 'STD':
+                return 0
+
+    structurelist = [x for x in StructureLib['StructureNames'] if domain in x]
+    print('Structures to be Condensed ' + str(structurelist))
+    
+    StructureLib[domain + '_condensed' + '_PDBID'] = StructureLib[structurelist[0] + '_PDBID']
+    StructureLib[domain + '_condensed' + '_Ligand'] = StructureLib[structurelist[0] + '_Ligand']
+    StructureLib[domain + '_condensed' + '_Chain'] = StructureLib[structurelist[0] + '_Chain']
+    StructureLib[domain + '_condensed' + '_Structure'] = StructureLib[structurelist[0] + '_Structure']
+    StructureLib[domain + '_condensed' + '_BCLoop'] = StructureLib[structurelist[0] + '_BCLoop']
+    StructureLib[domain + '_condensed' + '_resi_number'] = []
+    StructureLib[domain + '_condensed' + '_index'] = []
+    StructureLib[domain + '_condensed' + '_name'] = []
+    StructureLib[domain + '_condensed' + '_b'] = []
+    StructureLib[domain + '_condensed' + '_b_STD'] = []
+    StructureLib[domain + '_condensed' + '_scaled_b'] = []
+    StructureLib[domain + '_condensed' + '_scaled_b_STD'] = []
+    StructureLib[domain + '_condensed' + '_normalized_b'] = []
+    StructureLib[domain + '_condensed' + '_normalized_b_STD'] = []
+    StructureLib[domain + '_condensed' + '_q'] = []
+    StructureLib[domain + '_condensed' + '_q_STD'] = []
+    StructureLib[domain + '_condensed' + '_formal_charge'] = []
+    StructureLib[domain + '_condensed' + '_formal_charge_STD'] = []
+    StructureLib[domain + '_condensed' + '_partial_charge'] = []
+    StructureLib[domain + '_condensed' + '_partial_charge_STD'] = []
+    StructureLib[domain + '_condensed' + '_X'] = []
+    StructureLib[domain + '_condensed' + '_X_STD'] = []
+    StructureLib[domain + '_condensed' + '_Y'] = []
+    StructureLib[domain + '_condensed' + '_Y_STD'] = []
+    StructureLib[domain + '_condensed' + '_Z'] = []
+    StructureLib[domain + '_condensed' + '_Z_STD'] = []
+
+    #Choose structure with HIGHEST INDEX in structure.
+    numbers = []
+    for a in structurelist:
+        numbers.append(sorted(StructureLib[a + '_resi_number'])[-1])
+    largest = sorted(numbers)[-1]
+
+    for y in range(1,largest+1):
+        resi, index, name, b, scaled_b, normalized_b, q, formal, partial, X, Y, Z = [], [], [], [], [], [], [], [], [], [], [], []
+        for s in structurelist:
+            if y in StructureLib[s + '_resi_number']:
+                position = StructureLib[s + '_resi_number'].index(y)
+                index.append(StructureLib[s + '_index'][position])
+                name.append(StructureLib[s + '_name'][position])
+                b.append(StructureLib[s + '_b'][position])
+                scaled_b.append(StructureLib[s + '_scaled_b'][position])
+                normalized_b.append(StructureLib[s + '_normalized_b'][position])
+                q.append(StructureLib[s + '_q'][position])
+                formal.append(StructureLib[s + '_formal_charge'][position])
+                partial.append(StructureLib[s + '_partial_charge'][position])
+                X.append(StructureLib[s + '_X'][position])
+                Y.append(StructureLib[s + '_Y'][position])
+                Z.append(StructureLib[s + '_Z'][position])
+            else:
+                None
+                
+        StructureLib[domain + '_condensed' + '_resi_number'].append(y)
+        StructureLib[domain + '_condensed' + '_index'].append(index)
+        StructureLib[domain + '_condensed' + '_name'].append(name)  
+        StructureLib[domain + '_condensed' + '_b'].append(check(b,'av'))
+        StructureLib[domain + '_condensed' + '_b_STD'].append(check(b,'STD'))
+        StructureLib[domain + '_condensed' + '_scaled_b'].append(check(scaled_b,'av'))
+        StructureLib[domain + '_condensed' + '_scaled_b_STD'].append(check(scaled_b,'STD'))
+        StructureLib[domain + '_condensed' + '_normalized_b'].append(check(normalized_b,'av'))
+        StructureLib[domain + '_condensed' + '_normalized_b_STD'].append(check(normalized_b,'STD'))
+        StructureLib[domain + '_condensed' + '_q'].append(check(q,'av'))
+        StructureLib[domain + '_condensed' + '_q_STD'].append(check(q,'STD'))
+        StructureLib[domain + '_condensed' + '_formal_charge'].append(check(formal,'av'))
+        StructureLib[domain + '_condensed' + '_formal_charge_STD'].append(check(formal,'STD'))
+        StructureLib[domain + '_condensed' + '_partial_charge'].append(check(partial,'av'))
+        StructureLib[domain + '_condensed' + '_partial_charge_STD'].append(check(partial,'STD'))
+        StructureLib[domain + '_condensed' + '_X'].append(check(X,'av'))
+        StructureLib[domain + '_condensed' + '_X_STD'].append(check(X,'STD'))
+        StructureLib[domain + '_condensed' + '_Y'].append(check(Y,'av'))
+        StructureLib[domain + '_condensed' + '_Y_STD'].append(check(Y,'STD'))
+        StructureLib[domain + '_condensed' + '_Z'].append(check(Z,'av'))
+        StructureLib[domain + '_condensed' + '_Z_STD'].append(check(Z,'STD'))
+
+
+    StructureLib['StructureNames'] = StructureLib['StructureNames'] + [str(domain) + '_condensed']
+    StructureLib[domain + '_condensed' + '_Alignment_Function'], StructureLib[domain + '_condensed' + '_AlignFunction_RMSD'] = 'Structure not aligned', 'Structure not aligned'
+
+    cmd.extend("check", check)
+
+    return print(domain + ' Successfully Condensed'), Functions_Available('')
+
+def Graph(command):
+    '''Graph b-factors etc. using matplotlib
+    '''
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    import matplotlib.colors as colors
+    import matplotlib.font_manager as font_manager
+    import matplotlib.patheffects as pe
+
+    #Set Type of font
+    font = font_manager.FontProperties(family='Arial', weight='bold',style='normal',size=40)
+    font_axis = font_manager.FontProperties(family='Arial',style='normal',size=32)
+
+    ##Graph Aesthetics
+    plt.figure(figsize = (8,8))
+    plt.xlabel('Residue Number', fontproperties=font)
+    plt.ylabel('Normalized Cα b-Factor (± σ)', fontproperties=font)
+    #plt.title('b-Factor Analysis', fontsize=20)        
+    
+    #Eliminating upper and right hand borders
+    plt.gca().spines["top"].set_alpha(0)
+    plt.gca().spines["bottom"].set_alpha(1)
+    plt.gca().spines["right"].set_alpha(0)
+    plt.gca().spines["left"].set_alpha(1)
+        
+    if command == 'AlignAll':
+        rows = [StructureLib['StructureNames'][x] for x in range(len(StructureLib['StructureNames'])) if 'condensed' not in StructureLib['StructureNames'][x]]
+        cols = [StructureLib['StructureNames'][x] for x in range(len(StructureLib['StructureNames'])) if 'condensed' not in StructureLib['StructureNames'][x]]
+        fig, ax = plt.subplots()
+        fig.patch.set_visible(False)
+        ax.axis('off')
+        ax.axis('tight')
+        df = pd.DataFrame(StructureLib['AlignAll'], columns=cols)
+        table = ax.table(cellText=df.values, colLabels=df.columns, rowLabels=df.columns,
+                 loc='center',cellLoc='center', rowLoc='center', colLoc='center')
+        table.auto_set_font_size(False)
+        table.set_fontsize=(14)
+        table.auto_set_column_width(col=list(range(len(df.columns))))
+
+        fig.tight_layout()
+        
+    elif command == 'Presentation_Src':
+        #v-Src_2 - Nothing in binding pocket
+        plt.plot(StructureLib['v-Src_2_resi_number'][21:43],StructureLib['v-Src_2_normalized_b'][21:43], label='Src$^{wt}$ - Unbound', color='red', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        #superSrc - No Peptide
+        plt.plot(StructureLib['superSrc_resi_number'][21:43],StructureLib['superSrc_normalized_b'][21:43], label='superSrc - Unbound', color='green', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        #wtSrc - pYEEI
+        plt.plot(StructureLib['wtSrc_P4_resi_number'][21:43], StructureLib['wtSrc_P4_normalized_b'][21:43],color='silver', lw=8, label='Src$^{wt}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        #superSrc - pY
+        plt.plot(StructureLib['superSrc_pY_resi_number'][21:43],StructureLib['superSrc_pY_normalized_b'][21:43], label='superSrc - Bound', color='cyan', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        '''#Src12 - pYEEI
+        plt.plot(StructureLib['Src12_N_resi_number'][21:43],StructureLib['Src12_N_normalized_b'][21:43], label='Src$^{sFes}$ - Bound', color='magenta', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        '''
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(19.5, 45)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 3.5)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0], xmin=19.5, xmax=45, colors='black', alpha=0.5, linestyles="-", lw=0.5)
+        plt.xticks([20,25,30,35,40,45], font_properties=font_axis)
+        #plt.xticks([x for x in range(0,int(round(x2,0)),5)], fontsize=20)
+        plt.yticks([-2.0,-1.0,0,1.0,2.0,3.0], font_properties=font_axis)
+        #plt.legend(loc='upper right', prop=font)
+
+    elif command == 'PaperSrc1':
+        #superSrc - No Peptide
+        plt.plot(StructureLib['superSrc_resi_number'][21:43],StructureLib['superSrc_normalized_b'][21:43], label='sSrc$^{1}$ - Unbound', color='green', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        #superSrc - pY
+        plt.plot(StructureLib['superSrc_pY_resi_number'][21:43],StructureLib['superSrc_pY_normalized_b'][21:43], label='sSrc$^{1}$ - Bound', color='red', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+
+        #v-Src_2 - Nothing in binding pocket
+        plt.plot(StructureLib['v-Src_2_resi_number'][21:43],StructureLib['v-Src_2_normalized_b'][21:43], label='v-Src - Unbound', color='purple', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        #wtSrc - pYEEI
+        plt.plot(StructureLib['wtSrc_P4_resi_number'][21:43], StructureLib['wtSrc_P4_normalized_b'][21:43],color='orange', lw=8, label='Src$^{wt}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        
+        #Src12 - pYEEI
+        plt.plot(StructureLib['Src12_N_resi_number'][21:43],StructureLib['Src12_N_normalized_b'][21:43], label='sSrc$^{F}$ - Bound', color='cyan', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(19.5, 45)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 3.5)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0], xmin=19.5, xmax=45, colors='black', alpha=0.5, linestyles="-", lw=0.5)
+        plt.xticks([20,25,30,35,40,45], font_properties=font_axis)
+        #plt.xticks([x for x in range(0,int(round(x2,0)),5)], fontsize=20)
+        plt.yticks([-2.0,-1.0,0,1.0,2.0,3.0], font_properties=font_axis)
+        #plt.legend(loc='upper right', prop=font)
+
+    elif command == 'PaperSrc':
+        #v-Src_2 - Nothing in binding pocket
+        plt.plot(StructureLib['v-Src_2_resi_number'],StructureLib['v-Src_2_normalized_b'], label='v-Src - Nothing', color='purple', lw=2)
+
+        #wtSrc - No peptide
+        plt.plot(StructureLib['Src_None_condensed_resi_number'], StructureLib['Src_None_condensed_normalized_b'],color='white', lw=1, label='Src$^{wt}$ - No Peptide')
+        plt.fill_between(StructureLib['Src_None_condensed_resi_number'],
+                         y1=[StructureLib['Src_None_condensed_normalized_b'][x] + StructureLib['Src_None_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['Src_None_condensed_normalized_b']))],
+                         y2=[StructureLib['Src_None_condensed_normalized_b'][x] - StructureLib['Src_None_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['Src_None_condensed_normalized_b']))],
+                         color="blue", alpha=1.0)
+        #wtSrc - pYEEI
+        plt.plot(StructureLib['wtSrc_P_condensed_resi_number'], StructureLib['wtSrc_P_condensed_normalized_b'],color='white', lw=1, label='Src$^{wt}$ - Peptide')
+        plt.fill_between(StructureLib['wtSrc_P_condensed_resi_number'],
+                         y1=[StructureLib['wtSrc_P_condensed_normalized_b'][x] + StructureLib['wtSrc_P_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtSrc_P_condensed_normalized_b']))],
+                         y2=[StructureLib['wtSrc_P_condensed_normalized_b'][x] - StructureLib['wtSrc_P_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtSrc_P_condensed_normalized_b']))],
+                         color="orange", alpha=1.0)
+
+        #superSrc - No Peptide
+        plt.plot(StructureLib['superSrc_resi_number'],StructureLib['superSrc_normalized_b'], label='superSrc - No Peptide', color='green', lw=2)
+
+        #superSrc - pY
+        plt.plot(StructureLib['superSrc_pY_resi_number'],StructureLib['superSrc_pY_normalized_b'], label='superSrc - pTyr', color='red', lw=2)
+
+        #Src12 - pYEEI
+        plt.plot(StructureLib['Src12_N_resi_number'],StructureLib['Src12_N_normalized_b'], label='Src$^{superFes}$ - Peptide', color='cyan', lw=2)
+
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(0, x2)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 4.25)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0,4.0], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.xticks([x for x in range(0,int(round(x2,0)),10)], fontsize=12)
+        plt.legend(loc='upper right', prop=font)
+
+    elif command == 'Presentation_Fes':
+        #wtFes - No Peptide 
+        plt.plot(StructureLib['wtFes_None5_condensed_resi_number'][24:29], StructureLib['wtFes_None5_condensed_normalized_b'][24:29], color='dimgrey', lw=8, label='Fes$^{wt}$ - Unbound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+
+        plt.plot(StructureLib['wtFes_None5_condensed_resi_number'][28:31], StructureLib['wtFes_None5_condensed_normalized_b'][28:31], color='dimgrey', lw=8,
+                 linestyle='--', path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+
+        plt.plot(StructureLib['wtFes_None5_condensed_resi_number'][30:37], StructureLib['wtFes_None5_condensed_normalized_b'][30:37], color='dimgrey', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        
+        '''#wtFes - SO4
+        plt.plot(StructureLib['wtFes_SO4_2_resi_number'][24:37], StructureLib['wtFes_SO4_2_normalized_b'][24:37],color='orange', lw=8, label='Fes$^{wt}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        '''
+        #superFes - PPVpYEPV
+        plt.plot(StructureLib['superFes_N_resi_number'][24:37], StructureLib['superFes_N_normalized_b'][24:37],color='yellow', lw=8, label='sFes$^{1}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        
+        #Fes14 - PPVpYEPV
+        plt.plot(StructureLib['Fes14_N_resi_number'][24:37], StructureLib['Fes14_N_normalized_b'][24:37],color='blue', lw=8, label='sFes$^{S}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(24, 38)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 4.00)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0,4.0], xmin=24, xmax=38, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.xticks([25,30,35], font_properties=font_axis)
+        plt.yticks([-2.0,-1.0,0,1.0,2.0,3.0, 4.0], font_properties=font_axis)
+        #plt.xticks([x for x in range(0,int(round(x2,0)),5)], fontsize=20)
+        #plt.legend(loc='upper right', prop=font)
+
+    elif command == 'PaperFes1':
+        #superFes - PPVpYEPV
+        plt.plot(StructureLib['superFes_N_resi_number'][24:37], StructureLib['superFes_N_normalized_b'][24:37],color='violet', lw=8, label='sFes$^{1}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        #wtFes - No Peptide 
+        '''plt.plot(StructureLib['wtFes_None5_condensed_resi_number'][24:29], StructureLib['wtFes_None5_condensed_normalized_b'][24:29], color='yellow', lw=8, label='Fes$^{wt}$ - Unbound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+
+        plt.plot(StructureLib['wtFes_None5_condensed_resi_number'][28:31], StructureLib['wtFes_None5_condensed_normalized_b'][28:31], color='yellow', lw=8,
+                 linestyle='--', path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+
+        plt.plot(StructureLib['wtFes_None5_condensed_resi_number'][30:37], StructureLib['wtFes_None5_condensed_normalized_b'][30:37], color='yellow', lw=8,
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        '''
+        #wtFes - SO4
+        plt.plot(StructureLib['wtFes_SO4_2_resi_number'][24:37], StructureLib['wtFes_SO4_2_normalized_b'][24:37],color='lightgreen', lw=8, label='Fes$^{wt}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        #Fes14 - PPVpYEPV
+        plt.plot(StructureLib['Fes14_N_resi_number'][24:37], StructureLib['Fes14_N_normalized_b'][24:37],color='cornflowerblue', lw=8, label='sFes$^{S}$ - Bound',
+                 path_effects=[pe.Stroke(linewidth=12, foreground='black'), pe.Normal()])
+        
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(24, 38)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 4.00)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0,4.0], xmin=24, xmax=38, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.xticks([25,30,35], font_properties=font_axis)
+        plt.yticks([-2.0,-1.0,0,1.0,2.0,3.0, 4.0], font_properties=font_axis)
+        #plt.xticks([x for x in range(0,int(round(x2,0)),5)], fontsize=20)
+        #plt.legend(loc='upper right', prop=font)
+
+    elif command == 'PaperFes':
+        #wtFes - No Peptide
+        plt.plot(StructureLib['wtFes_None_condensed_resi_number'], StructureLib['wtFes_None_condensed_normalized_b'],color='white', lw=1, label='Fes$^{wt}$ - No Peptide')
+        plt.fill_between(StructureLib['wtFes_None_condensed_resi_number'],
+                         y1=[StructureLib['wtFes_None_condensed_normalized_b'][x] + StructureLib['wtFes_None_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtFes_None_condensed_normalized_b']))],
+                         y2=[StructureLib['wtFes_None_condensed_normalized_b'][x] - StructureLib['wtFes_None_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtFes_None_condensed_normalized_b']))],
+                         color="blue", alpha=1.0)
+        
+
+        #wtFes - SO4
+        plt.plot(StructureLib['wtFes_SO4_condensed_resi_number'], StructureLib['wtFes_SO4_condensed_normalized_b'],color='white', lw=1, label='Fes$^{wt}$ - SO4')
+        plt.fill_between(StructureLib['wtFes_SO4_condensed_resi_number'],
+                         y1=[StructureLib['wtFes_SO4_condensed_normalized_b'][x] + StructureLib['wtFes_SO4_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtFes_SO4_condensed_normalized_b']))],
+                         y2=[StructureLib['wtFes_SO4_condensed_normalized_b'][x] - StructureLib['wtFes_SO4_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtFes_SO4_condensed_normalized_b']))],
+                         color="orange", alpha=1.0)
+
+        #superFes - PPVpYEPV
+        plt.plot(StructureLib['superFes_N_resi_number'], StructureLib['superFes_N_normalized_b'],color='green', lw=2, label='superFes - Peptide')
+
+        #Fes14 - PPVpYEPV
+        plt.plot(StructureLib['Fes14_N_resi_number'], StructureLib['Fes14_N_normalized_b'],color='red', lw=2, label='Fes$^{superSrc}$ - Peptide')
+
+        #Fer - No Peptide
+        #plt.plot(StructureLib['Fer_None_resi_number'],StructureLib['Fer_None_normalized_b'], label='Fer - No Peptide', color='green', lw=2)
+
+        #Fer - Peptide
+        #plt.plot(StructureLib['wtFer_Peptide_resi_number'],StructureLib['wtFer_Peptide_normalized_b'], label='Fer - Peptide', color='green', lw=2)
+
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(0, x2)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 4.25)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0,4.0], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.xticks([x for x in range(0,int(round(x2,0)),10)], fontsize=12)
+        plt.legend(loc='upper right', prop=font)
+
+    elif command == 'PaperSuper':
+        #wtSrc - pYEEI
+        '''plt.plot(StructureLib['wtSrc_P_condensed_resi_number'], StructureLib['wtSrc_P_condensed_normalized_b'],color='white', lw=1, label='Src$^{wt}$ - Peptide')
+        plt.fill_between(StructureLib['wtSrc_P_condensed_resi_number'],
+                         y1=[StructureLib['wtSrc_P_condensed_normalized_b'][x] + StructureLib['wtSrc_P_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtSrc_P_condensed_normalized_b']))],
+                         y2=[StructureLib['wtSrc_P_condensed_normalized_b'][x] - StructureLib['wtSrc_P_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtSrc_P_condensed_normalized_b']))],
+                         color="pink", alpha=1.0)'''
+        #superSrc - pY
+        plt.plot(StructureLib['superSrc_pY_resi_number'],StructureLib['superSrc_pY_normalized_b'], label='superSrc - pTyr', color='purple', lw=2)
+
+        #Src12 - pYEEI
+        plt.plot(StructureLib['Src12_N_resi_number'],StructureLib['Src12_N_normalized_b'], label='Src$^{superFes}$ - Peptide', color='cyan', lw=2)
+
+        #wtFes - SO4
+        '''plt.plot(StructureLib['wtFes_SO4_condensed_resi_number'], StructureLib['wtFes_SO4_condensed_normalized_b'],color='white', lw=1, label='Fes$^{wt}$ - SO4')
+        plt.fill_between(StructureLib['wtFes_SO4_condensed_resi_number'],
+                         y1=[StructureLib['wtFes_SO4_condensed_normalized_b'][x] + StructureLib['wtFes_SO4_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtFes_SO4_condensed_normalized_b']))],
+                         y2=[StructureLib['wtFes_SO4_condensed_normalized_b'][x] - StructureLib['wtFes_SO4_condensed_normalized_b_STD'][x] for x in range(len(StructureLib['wtFes_SO4_condensed_normalized_b']))],
+                         color="blue", alpha=1.0)'''
+        
+        #superFes - PPVpYEPV
+        plt.plot(StructureLib['superFes_N_resi_number'], StructureLib['superFes_N_normalized_b'],color='orange', lw=2, label='superFes - Peptide')
+
+        #Fes14 - PPVpYEPV
+        plt.plot(StructureLib['Fes14_N_resi_number'], StructureLib['Fes14_N_normalized_b'],color='red', lw=2, label='Fes$^{superSrc}$ - Peptide')
+
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(0, x2)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 4.25)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0,4.0], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.xticks([x for x in range(0,int(round(x2,0)),10)], fontsize=12)
+        plt.legend(loc='upper right', prop=font)
+        
+    else:
+        for structure in StructureLib['StructureNames']:
+            if 'condensed' not in structure and sum(StructureLib[structure + '_b']) > 0:
+                plt.plot(StructureLib[structure + '_resi_number'],StructureLib[structure + '_normalized_b'], label=str(structure))
+            else:
+                continue
+        #Setting Graph Limits
+        x1, x2 = plt.gca().get_xlim()
+        y1, y2 = plt.gca().get_ylim()
+        plt.xlim(0, x2)
+        #plt.ylim(5*(round(y1/5)), 5*(round(y2/5)))
+        plt.ylim(-2.0, 4.25)
+    
+        #Tick marks and horizontal lines
+        #plt.hlines([y for y in range(0,int(round(3,0))+1,1)], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.hlines([-2.0,-1.0,0,1.0,2.0,3.0,4.0], xmin=0, xmax=x2, colors='black', alpha=0.5, linestyles="-", lw=0.35)
+        plt.xticks([x for x in range(0,int(round(x2,0)),10)], fontsize=12)
+        plt.legend(loc='upper right', prop=font)
+
+    plt.show()
+
+    return Functions_Available('')
+
+def DataExport(command):
+    '''Export Accrued Data in StructureLib to Excel File for use
+    '''
+    #import xlsxwriter
+    if command == 'TAB':
+        with open('Tab_Output.txt', 'w') as tab_out:
+            for headline in StructureLib['Headlines']:
+                tab_out.write(str(headline) + '\t')
+            tab_out.write('\n')
+            
+            for structure in StructureLib['StructureNames']:
+                tab_out.write(structure + '\t')
+                for item in StructureLib['Data']:
+                    tab_out.write(str(StructureLib[structure + item]))
+                    tab_out.write('\t')
+                tab_out.write('\n')
+
+            #Plotting the AlignAll function
+            names = [StructureLib['StructureNames'][x] for x in range(len(StructureLib['StructureNames'])) if 'condensed' not in StructureLib['StructureNames'][x]]
+            tab_out.write('\n')
+            tab_out.write('\t''\t')
+            for structure in names:
+                tab_out.write(structure)
+                tab_out.write('\t')
+            tab_out.write('\n')
+            for x in range(len(names)):
+                tab_out.write('\t')
+                tab_out.write(names[x])
+                tab_out.write('\t')
+                for y in range(len(StructureLib['AlignAll'][x])):
+                    tab_out.write(StructureLib['AlignAll'][x][y])
+                    tab_out.write('\t')
+                tab_out.write('\n')
+        tab_out.close()
+
+    elif command == 'EXCEL':
+        workbook = xlsxwriter.Workbook('Output.xlsx')
+        Output = workbook.add_worksheet('Structure Data')
+        for x in range(0,len(StructureLib['Headlines'])):
+            Output.write(0,x,str(StructureLib['Headlines'][x]))
+        row = 1
+        for structure in StructureLib['StructureNames']:
+            Output.write(row, 0, str(structure))
+            col = 1    
+            for item in StructureLib['Data']:
+                Output.write(row, col, str(StructureLib[structure + item]))
+                col = col + 1
+        workbook.close()
+
+    elif command == 'None':
+        pass
+
+    else:
+        print('DataExport(command="TAB"/"EXCEL"), select tab output or excel output or "None" to stop DataExport')
+
+
+    return print('Data Export Successful'), Functions_Available('')
+
+Functions_Available('START')
+cmd.extend("Functions_Available", Functions_Available)
+cmd.extend("Structure_Import", Structure_Import)
+cmd.extend("Custom_Import", Custom_Import)
+cmd.extend("Make_Pretty", Make_Pretty)
+cmd.extend("Align", Align)
+cmd.extend("Align_All", Align_All)
+cmd.extend("Data_Extraction", Data_Extraction)
+cmd.extend("Condense_Structure", Condense_Structure)
+cmd.extend("Graph", Graph)
+cmd.extend("DataExport", DataExport)
